@@ -1,40 +1,41 @@
-
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { TrendingUp, Download, FileSpreadsheet, Presentation, Calculator, Target, DollarSign, TrendingDown } from 'lucide-react';
+import { TrendingUp, Download, FileSpreadsheet, Presentation, Calculator, Target, DollarSign, TrendingDown, FileDown } from 'lucide-react';
 import { toast } from 'sonner';
-import { AdvancedValuationService, ValuationInputs, ComprehensiveValuation } from '@/services/advancedValuationService';
+import { AdvancedValuationService, ComprehensiveValuation } from '@/services/advancedValuationService';
+import { AlphaVantageService } from '@/services/alphaVantageService';
+import { CSVDataProcessor } from '@/services/csvDataProcessor';
+import DataSourceSelector, { MarketAssumptions } from '@/components/DataSourceSelector';
 
 const ComprehensiveValuationAnalyzer = () => {
-  const [ticker, setTicker] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [valuation, setValuation] = useState<ComprehensiveValuation | null>(null);
+  const [dataSource, setDataSource] = useState<'api' | 'csv' | null>(null);
 
-  const handleAnalyze = async () => {
-    if (!ticker.trim()) {
-      toast.error('Please enter a valid ticker symbol');
-      return;
-    }
-
+  const handleDataSourceSelected = async (
+    source: 'api' | 'csv', 
+    data: any, 
+    assumptions: MarketAssumptions
+  ) => {
+    setDataSource(source);
     setIsAnalyzing(true);
     setProgress(0);
 
     try {
       const steps = [
-        'Fetching financial data with yfinance equivalent...',
+        source === 'api' ? 'Fetching real-time data from Alpha Vantage...' : 'Processing CSV data...',
         'Calculating Free Cash Flow projections...',
         'Computing WACC using CAPM model...',
         'Running DCF analysis with terminal value...',
         'Analyzing dividend history for DDM...',
         'Calculating Gordon Growth Model...',
         'Generating comprehensive valuation report...',
-        'Creating Excel and PowerPoint exports...'
+        'Finalizing analysis and recommendations...'
       ];
 
       for (let i = 0; i < steps.length; i++) {
@@ -43,25 +44,39 @@ const ComprehensiveValuationAnalyzer = () => {
         await new Promise(resolve => setTimeout(resolve, 1200));
       }
 
-      const inputs: ValuationInputs = {
-        ticker: ticker.toUpperCase(),
-        riskFreeRate: 0.04, // 4%
-        marketReturn: 0.09, // 9%
-        taxRate: 0.21, // 21%
-        terminalGrowthRate: 0.025, // 2.5%
-        forecastYears: 5
-      };
+      let financialData;
+      let ticker;
 
+      if (source === 'api') {
+        ticker = data.ticker;
+        // Convert Alpha Vantage data to our format
+        const alphaData = await AlphaVantageService.getProcessedFinancialData(ticker);
+        financialData = alphaData;
+      } else {
+        ticker = data.ticker || 'CUSTOM';
+        // Process CSV data
+        financialData = CSVDataProcessor.processCSVData(data, ticker);
+      }
+
+      // Use the new valuation service with custom assumptions
       const comprehensiveValuation = await AdvancedValuationService.getComprehensiveValuation(
-        ticker.toUpperCase(),
-        inputs
+        ticker,
+        {
+          ticker,
+          riskFreeRate: assumptions.riskFreeRate,
+          marketReturn: assumptions.marketReturn,
+          taxRate: assumptions.taxRate,
+          terminalGrowthRate: assumptions.terminalGrowthRate,
+          forecastYears: assumptions.forecastYears
+        },
+        financialData
       );
 
       setValuation(comprehensiveValuation);
-      toast.success('Comprehensive valuation analysis completed!');
+      toast.success(`Comprehensive valuation analysis completed for ${ticker}!`);
 
     } catch (error) {
-      toast.error('Analysis failed. Please try again.');
+      toast.error(`Analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
       console.error('Valuation analysis error:', error);
     } finally {
       setIsAnalyzing(false);
@@ -93,6 +108,11 @@ const ComprehensiveValuationAnalyzer = () => {
     toast.success(`PowerPoint presentation downloaded: Valuation_Deck_${valuation.ticker}.pptx`);
   };
 
+  const handleDownloadSampleCSV = () => {
+    CSVDataProcessor.downloadSampleCSV();
+    toast.success('Sample CSV template downloaded!');
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-800 p-6">
       <div className="max-w-7xl mx-auto">
@@ -108,49 +128,48 @@ const ComprehensiveValuationAnalyzer = () => {
           <div className="flex items-center justify-center gap-4 mt-4">
             <Badge variant="secondary" className="bg-purple-800 text-purple-100">DCF Analysis</Badge>
             <Badge variant="secondary" className="bg-blue-800 text-blue-100">DDM Analysis</Badge>
-            <Badge variant="secondary" className="bg-green-800 text-green-100">WACC & CAPM</Badge>
-            <Badge variant="secondary" className="bg-orange-800 text-orange-100">Excel & PPT Export</Badge>
+            <Badge variant="secondary" className="bg-green-800 text-green-100">Real-time Data</Badge>
+            <Badge variant="secondary" className="bg-orange-800 text-orange-100">CSV Upload</Badge>
           </div>
         </div>
 
-        {/* Input Section */}
-        <Card className="mb-8 bg-slate-800/50 border-slate-700">
-          <CardHeader>
-            <CardTitle className="text-white flex items-center gap-2">
-              <Target className="h-5 w-5" />
-              Comprehensive Valuation Analysis
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex gap-4 items-end">
-              <div className="flex-1">
-                <label className="block text-sm font-medium text-slate-300 mb-2">
-                  Stock Ticker Symbol
-                </label>
-                <Input
-                  placeholder="e.g., AAPL, MSFT, GOOGL"
-                  value={ticker}
-                  onChange={(e) => setTicker(e.target.value.toUpperCase())}
-                  className="bg-slate-700 border-slate-600 text-white placeholder-slate-400"
-                  disabled={isAnalyzing}
-                />
-              </div>
-              <Button 
-                onClick={handleAnalyze}
-                disabled={isAnalyzing}
-                className="bg-purple-600 hover:bg-purple-700 text-white px-8"
-              >
-                {isAnalyzing ? 'Analyzing...' : 'Run Full Valuation'}
-              </Button>
-            </div>
-            {isAnalyzing && (
-              <div className="mt-4">
+        {/* Data Source Selection */}
+        <div className="mb-8">
+          <DataSourceSelector 
+            onDataSourceSelected={handleDataSourceSelected}
+            isLoading={isAnalyzing}
+          />
+        </div>
+
+        {/* Download Sample CSV */}
+        <div className="mb-8 text-center">
+          <Button
+            onClick={handleDownloadSampleCSV}
+            variant="outline"
+            className="border-slate-600 text-slate-300 hover:bg-slate-700"
+          >
+            <FileDown className="h-4 w-4 mr-2" />
+            Download CSV Template
+          </Button>
+        </div>
+
+        {/* Progress indicator */}
+        {isAnalyzing && (
+          <Card className="mb-8 bg-slate-800/50 border-slate-700">
+            <CardContent className="p-6">
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Target className="h-5 w-5 text-purple-400" />
+                  <span className="text-white font-medium">
+                    {dataSource === 'api' ? 'Fetching Real-time Data' : 'Processing CSV Data'}
+                  </span>
+                </div>
                 <Progress value={progress} className="h-2" />
-                <p className="text-sm text-slate-400 mt-2">Analysis in progress... {Math.round(progress)}%</p>
+                <p className="text-sm text-slate-400">Analysis in progress... {Math.round(progress)}%</p>
               </div>
-            )}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Results Section */}
         {valuation && (
@@ -201,6 +220,9 @@ const ComprehensiveValuationAnalyzer = () => {
                   <div className="text-sm text-slate-400">Current Price</div>
                   <div className="text-2xl font-bold text-white">
                     ${valuation.dcf.currentPrice.toFixed(2)}
+                  </div>
+                  <div className="text-sm text-slate-400">
+                    Data: {dataSource === 'api' ? 'Real-time' : 'CSV Upload'}
                   </div>
                 </CardContent>
               </Card>
@@ -408,6 +430,10 @@ const ComprehensiveValuationAnalyzer = () => {
                             <span className="text-slate-400">Forecast Period:</span>
                             <span className="text-white">5 years</span>
                           </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Data Source:</span>
+                            <span className="text-white">{dataSource === 'api' ? 'Alpha Vantage API' : 'CSV Upload'}</span>
+                          </div>
                         </div>
                       </div>
                       <div>
@@ -417,7 +443,7 @@ const ComprehensiveValuationAnalyzer = () => {
                           <p>• WACC calculated using CAPM for cost of equity</p>
                           <p>• DDM applies Gordon Growth Model for dividend stocks</p>
                           <p>• Terminal value assumes perpetual growth at 2.5%</p>
-                          <p>• Both models use 5-year historical data for projections</p>
+                          <p>• {dataSource === 'api' ? 'Real-time data from Alpha Vantage API' : 'User-provided CSV data'}</p>
                         </div>
                       </div>
                     </div>

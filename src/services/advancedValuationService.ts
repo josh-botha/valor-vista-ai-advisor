@@ -1,4 +1,3 @@
-
 import { ExcelExporter } from '@/utils/excelExporter';
 
 export interface DividendData {
@@ -48,19 +47,40 @@ export interface ComprehensiveValuation {
   keyStrengths: string[];
 }
 
+// Interface for external financial data (from Alpha Vantage or CSV)
+export interface ExternalFinancialData {
+  ticker: string;
+  marketCap: number;
+  beta: number;
+  totalDebt: number;
+  interestExpense: number;
+  revenue: number[];
+  netIncome: number[];
+  operatingIncome: number[];
+  capex: number[];
+  cashFromOps: number[];
+  dividends: number[];
+  sharesOutstanding: number;
+  currentPrice: number;
+  paysDividends: boolean;
+}
+
 export class AdvancedValuationService {
   static async getComprehensiveValuation(
     ticker: string,
-    inputs: ValuationInputs
+    inputs: ValuationInputs,
+    externalData?: ExternalFinancialData
   ): Promise<ComprehensiveValuation> {
-    // Mock comprehensive financial data (in production, this would come from financial APIs)
-    const mockData = this.getMockFinancialData(ticker);
+    // Use external data if provided, otherwise fall back to mock data
+    const financialData = externalData || this.getMockFinancialData(ticker);
+    
+    console.log('Using financial data:', financialData);
     
     // Calculate DCF
-    const dcfResults = this.calculateDCF(mockData, inputs);
+    const dcfResults = this.calculateDCF(financialData, inputs);
     
     // Calculate DDM
-    const ddmResults = this.calculateDDM(mockData, inputs);
+    const ddmResults = this.calculateDDM(financialData, inputs);
     
     // Generate recommendation
     const recommendation = this.generateRecommendation(dcfResults, ddmResults);
@@ -75,10 +95,11 @@ export class AdvancedValuationService {
     };
   }
 
-  private static getMockFinancialData(ticker: string) {
+  private static getMockFinancialData(ticker: string): ExternalFinancialData {
     // Mock data based on ticker - in production, this would be real financial data
     const baseData = {
       'AAPL': {
+        ticker: 'AAPL',
         revenue: [365817, 394328, 383285, 274515, 260174], // Last 5 years
         netIncome: [94680, 99803, 57411, 48351, 45687],
         operatingIncome: [108949, 119437, 70898, 63930, 61344],
@@ -94,6 +115,7 @@ export class AdvancedValuationService {
         paysDividends: true
       },
       'MSFT': {
+        ticker: 'MSFT',
         revenue: [211915, 198270, 168088, 143015, 125843],
         netIncome: [72361, 61271, 44281, 39240, 16571],
         operatingIncome: [88523, 76740, 62310, 52959, 22326],
@@ -113,7 +135,7 @@ export class AdvancedValuationService {
     return baseData[ticker.toUpperCase() as keyof typeof baseData] || baseData['AAPL'];
   }
 
-  private static calculateDCF(data: any, inputs: ValuationInputs): DCFResults {
+  private static calculateDCF(data: ExternalFinancialData, inputs: ValuationInputs): DCFResults {
     const { riskFreeRate, marketReturn, taxRate, terminalGrowthRate, forecastYears } = inputs;
     
     // Calculate cost of equity using CAPM
@@ -170,7 +192,7 @@ export class AdvancedValuationService {
     };
   }
 
-  private static calculateDDM(data: any, inputs: ValuationInputs): DDMResults {
+  private static calculateDDM(data: ExternalFinancialData, inputs: ValuationInputs): DDMResults {
     if (!data.paysDividends || data.dividends.length < 3) {
       return {
         avgDividendGrowth: 0,
@@ -184,7 +206,7 @@ export class AdvancedValuationService {
     }
     
     // Calculate average dividend growth rate
-    const avgDividendGrowth = this.calculateAverageGrowthRate(data.dividends.reverse());
+    const avgDividendGrowth = this.calculateAverageGrowthRate(data.dividends.slice().reverse());
     
     // Calculate cost of equity using CAPM
     const costOfEquity = inputs.riskFreeRate + data.beta * (inputs.marketReturn - inputs.riskFreeRate);
