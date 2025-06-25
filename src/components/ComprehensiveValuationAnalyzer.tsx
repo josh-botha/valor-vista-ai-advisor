@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import DataSourceSelector, { MarketAssumptions } from '@/components/DataSourceSelector';
-import DCFCalculator, { DCFResults } from '@/components/DCFCalculator';
+import { calculateDCF, DCFResults } from '@/utils/dcfCalculator';
 import { AlphaVantageService } from '@/services/alphaVantageService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from "@/components/ui/skeleton"
@@ -83,7 +83,7 @@ const ComprehensiveValuationAnalyzer: React.FC<ComprehensiveValuationAnalyzerPro
           forecastYears: assumptions.forecastYears
         };
 
-        setResults(DCFCalculator(dcfData));
+        setResults(calculateDCF(dcfData));
         toast.success('Real-time data fetched and valuation complete!');
 
       } else if (source === 'csv') {
@@ -104,7 +104,7 @@ const ComprehensiveValuationAnalyzer: React.FC<ComprehensiveValuationAnalyzerPro
           forecastYears: assumptions.forecastYears
         };
 
-        setResults(DCFCalculator(dcfData));
+        setResults(calculateDCF(dcfData));
         toast.success('CSV data processed and valuation complete!');
       }
     } catch (e: any) {
