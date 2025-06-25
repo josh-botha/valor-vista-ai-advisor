@@ -47,7 +47,8 @@ const Auth = () => {
     if (error) {
       toast.error(error.message || 'Failed to create account');
     } else {
-      toast.success('Account created successfully! Please check your email for verification.');
+      toast.success('Account created successfully! You are now signed in.');
+      navigate('/');
     }
     setIsLoading(false);
   };
@@ -65,8 +66,6 @@ const Auth = () => {
     if (error) {
       if (error.message.includes('Invalid login credentials')) {
         toast.error('Invalid email or password');
-      } else if (error.message.includes('Email not confirmed')) {
-        toast.error('Please check your email and confirm your account before signing in');
       } else {
         toast.error(error.message || 'Failed to sign in');
       }
