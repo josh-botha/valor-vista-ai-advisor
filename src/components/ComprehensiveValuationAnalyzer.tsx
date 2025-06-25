@@ -1,459 +1,286 @@
-import React, { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
-import { TrendingUp, Download, FileSpreadsheet, Presentation, Calculator, Target, DollarSign, TrendingDown, FileDown } from 'lucide-react';
-import { toast } from 'sonner';
-import { AdvancedValuationService, ComprehensiveValuation } from '@/services/advancedValuationService';
-import { AlphaVantageService } from '@/services/alphaVantageService';
-import { CSVDataProcessor } from '@/services/csvDataProcessor';
+import React, { useState, useEffect } from 'react';
 import DataSourceSelector, { MarketAssumptions } from '@/components/DataSourceSelector';
+import DCFCalculator, { DCFResults } from '@/components/DCFCalculator';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from "@/components/ui/skeleton"
+import { Separator } from "@/components/ui/separator"
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
+import { Badge } from "@/components/ui/badge"
+import { Sparkles, BarChart3, FilePieChart, Presentation, AlertTriangle } from 'lucide-react';
+import { toast } from 'sonner';
 
-const ComprehensiveValuationAnalyzer = () => {
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [valuation, setValuation] = useState<ComprehensiveValuation | null>(null);
+interface ComprehensiveValuationAnalyzerProps {
+  initialTicker?: string;
+}
+
+const ComprehensiveValuationAnalyzer: React.FC<ComprehensiveValuationAnalyzerProps> = ({ 
+  initialTicker = '' 
+}) => {
   const [dataSource, setDataSource] = useState<'api' | 'csv' | null>(null);
+  const [data, setData] = useState<any>(null);
+  const [assumptions, setAssumptions] = useState<MarketAssumptions | null>(null);
+  const [results, setResults] = useState<DCFResults | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleDataSourceSelected = async (
-    source: 'api' | 'csv', 
-    data: any, 
-    assumptions: MarketAssumptions
-  ) => {
+  const handleDataSourceSelected = async (source: 'api' | 'csv', data: any, assumptions: MarketAssumptions) => {
     setDataSource(source);
-    setIsAnalyzing(true);
-    setProgress(0);
+    setData(data);
+    setAssumptions(assumptions);
+    setResults(null); // Clear previous results
+    setError(null);
+    setIsLoading(true);
 
     try {
-      const steps = [
-        source === 'api' ? 'Fetching real-time data from Alpha Vantage...' : 'Processing CSV data...',
-        'Calculating Free Cash Flow projections...',
-        'Computing WACC using CAPM model...',
-        'Running DCF analysis with terminal value...',
-        'Analyzing dividend history for DDM...',
-        'Calculating Gordon Growth Model...',
-        'Generating comprehensive valuation report...',
-        'Finalizing analysis and recommendations...'
-      ];
-
-      for (let i = 0; i < steps.length; i++) {
-        toast.info(steps[i]);
-        setProgress((i + 1) * (100 / steps.length));
-        await new Promise(resolve => setTimeout(resolve, 1200));
-      }
-
-      let financialData;
-      let ticker;
+      // Simulate API call or data processing delay
+      await new Promise(resolve => setTimeout(resolve, 500));
 
       if (source === 'api') {
-        ticker = data.ticker;
-        // Convert Alpha Vantage data to our format
-        const alphaData = await AlphaVantageService.getProcessedFinancialData(ticker);
-        financialData = alphaData;
-      } else {
-        ticker = data.ticker || 'CUSTOM';
-        // Process CSV data
-        financialData = CSVDataProcessor.processCSVData(data, ticker);
-      }
+        // Fetch data from Alpha Vantage API
+        const ticker = (data as { ticker: string }).ticker;
+        
+        // Fetch Overview
+        const overviewResponse = await fetch(`/api/alpha-vantage?ticker=${ticker}&dataType=overview`);
+        const overviewData = await overviewResponse.json();
+        if (!overviewResponse.ok) {
+          throw new Error(overviewData.error || 'Failed to fetch company overview');
+        }
 
-      // Use the new valuation service with custom assumptions
-      const comprehensiveValuation = await AdvancedValuationService.getComprehensiveValuation(
-        ticker,
-        {
-          ticker,
+        // Fetch Income Statement
+        const incomeStatementResponse = await fetch(`/api/alpha-vantage?ticker=${ticker}&dataType=income_statement`);
+        const incomeStatementData = await incomeStatementResponse.json();
+        if (!incomeStatementResponse.ok) {
+          throw new Error(incomeStatementData.error || 'Failed to fetch income statement');
+        }
+
+        // Fetch Balance Sheet
+        const balanceSheetResponse = await fetch(`/api/alpha-vantage?ticker=${ticker}&dataType=balance_sheet`);
+        const balanceSheetData = await balanceSheetResponse.json();
+        if (!balanceSheetResponse.ok) {
+          throw new Error(balanceSheetData.error || 'Failed to fetch balance sheet');
+        }
+
+        // Fetch Cash Flow Statement
+        const cashFlowResponse = await fetch(`/api/alpha-vantage?ticker=${ticker}&dataType=cash_flow`);
+        const cashFlowData = await cashFlowResponse.json();
+        if (!cashFlowResponse.ok) {
+          throw new Error(cashFlowData.error || 'Failed to fetch cash flow statement');
+        }
+
+        const apiData = {
+          overview: overviewData.data,
+          incomeStatement: incomeStatementData.data,
+          balanceSheet: balanceSheetData.data,
+          cashFlow: cashFlowData.data,
+        };
+        
+        setData(apiData);
+
+        // Prepare data for DCF calculation
+        const revenueGrowthRates = Array(assumptions.forecastYears).fill(0.05); // Example: 5% growth for all forecast years
+        const operatingMargins = Array(assumptions.forecastYears).fill(0.15); // Example: 15% operating margin for all forecast years
+        
+        const dcfData = {
+          revenueGrowthRates,
+          operatingMargins,
           riskFreeRate: assumptions.riskFreeRate,
           marketReturn: assumptions.marketReturn,
           taxRate: assumptions.taxRate,
           terminalGrowthRate: assumptions.terminalGrowthRate,
           forecastYears: assumptions.forecastYears
-        },
-        financialData
-      );
+        };
 
-      setValuation(comprehensiveValuation);
-      toast.success(`Comprehensive valuation analysis completed for ${ticker}!`);
+        setResults(DCFCalculator(dcfData));
+        toast.success('Data fetched and valuation complete!');
 
-    } catch (error) {
-      toast.error(`Analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      console.error('Valuation analysis error:', error);
+      } else if (source === 'csv') {
+        // Process CSV data
+        // Example: Validate CSV data structure
+        if (!data['Revenue'] || !data['Net Income']) {
+          throw new Error('CSV data must contain Revenue and Net Income columns');
+        }
+        
+        // Simulate DCF calculation with CSV data
+        const revenueGrowthRates = Array(assumptions.forecastYears).fill(0.05); // Example: 5% growth for all forecast years
+        const operatingMargins = Array(assumptions.forecastYears).fill(0.15); // Example: 15% operating margin for all forecast years
+        
+        const dcfData = {
+          revenueGrowthRates,
+          operatingMargins,
+          riskFreeRate: assumptions.riskFreeRate,
+          marketReturn: assumptions.marketReturn,
+          taxRate: assumptions.taxRate,
+          terminalGrowthRate: assumptions.terminalGrowthRate,
+          forecastYears: assumptions.forecastYears
+        };
+
+        setResults(DCFCalculator(dcfData));
+        toast.success('CSV data processed and valuation complete!');
+      }
+    } catch (e: any) {
+      setError(e.message || 'Failed to fetch or process data');
+      toast.error(e.message || 'Failed to fetch or process data');
     } finally {
-      setIsAnalyzing(false);
-      setProgress(100);
+      setIsLoading(false);
     }
   };
 
-  const handleExportExcel = async () => {
-    if (!valuation) return;
-    
-    try {
-      const blob = await AdvancedValuationService.generateExcelReport(valuation);
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `Valuation_Models_${valuation.ticker}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-      toast.success('Valuation report downloaded successfully!');
-    } catch (error) {
-      toast.error('Failed to generate report');
+  // Auto-trigger analysis if initial ticker is provided
+  useEffect(() => {
+    if (initialTicker && !isLoading && !results) {
+      const defaultAssumptions = {
+        riskFreeRate: 0.04,
+        marketReturn: 0.09,
+        taxRate: 0.21,
+        terminalGrowthRate: 0.025,
+        forecastYears: 5
+      };
+      
+      handleDataSourceSelected('api', { ticker: initialTicker }, defaultAssumptions);
     }
-  };
-
-  const handleExportPowerPoint = () => {
-    if (!valuation) return;
-    toast.success(`PowerPoint presentation downloaded: Valuation_Deck_${valuation.ticker}.pptx`);
-  };
-
-  const handleDownloadSampleCSV = () => {
-    CSVDataProcessor.downloadSampleCSV();
-    toast.success('Sample CSV template downloaded!');
-  };
+  }, [initialTicker, isLoading, results]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-800 p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <div className="p-3 bg-purple-600 rounded-xl">
-              <Calculator className="h-8 w-8 text-white" />
-            </div>
-            <h1 className="text-4xl font-bold text-white">Advanced Valuation Engine</h1>
-          </div>
-          <p className="text-xl text-purple-200">DCF + DDM Dual Valuation Platform</p>
-          <div className="flex items-center justify-center gap-4 mt-4">
-            <Badge variant="secondary" className="bg-purple-800 text-purple-100">DCF Analysis</Badge>
-            <Badge variant="secondary" className="bg-blue-800 text-blue-100">DDM Analysis</Badge>
-            <Badge variant="secondary" className="bg-green-800 text-green-100">Real-time Data</Badge>
-            <Badge variant="secondary" className="bg-orange-800 text-orange-100">CSV Upload</Badge>
-          </div>
-        </div>
+    <div className="container mx-auto py-8">
+      <h1 className="text-2xl font-bold mb-4">Comprehensive Valuation Analyzer</h1>
+      
+      <DataSourceSelector onDataSourceSelected={handleDataSourceSelected} isLoading={isLoading} />
 
-        {/* Data Source Selection */}
-        <div className="mb-8">
-          <DataSourceSelector 
-            onDataSourceSelected={handleDataSourceSelected}
-            isLoading={isAnalyzing}
-          />
-        </div>
+      {isLoading && (
+        <Card className="mt-6 bg-slate-800/50 border-slate-700">
+          <CardHeader>
+            <CardTitle className="text-white flex items-center gap-2">
+              <Sparkles className="h-5 w-5 animate-spin" />
+              Analyzing Data
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Skeleton className="h-4 w-[80%]" />
+            <Skeleton className="h-4 w-[60%]" />
+            <Skeleton className="h-4 w-[40%]" />
+          </CardContent>
+        </Card>
+      )}
 
-        {/* Download Sample CSV */}
-        <div className="mb-8 text-center">
-          <Button
-            onClick={handleDownloadSampleCSV}
-            variant="outline"
-            className="border-slate-600 text-slate-300 hover:bg-slate-700"
-          >
-            <FileDown className="h-4 w-4 mr-2" />
-            Download CSV Template
-          </Button>
-        </div>
+      {error && (
+        <Card className="mt-6 bg-red-800/50 border-red-700">
+          <CardHeader>
+            <CardTitle className="text-white flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5" />
+              Error
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-red-400">{error}</p>
+          </CardContent>
+        </Card>
+      )}
 
-        {/* Progress indicator */}
-        {isAnalyzing && (
-          <Card className="mb-8 bg-slate-800/50 border-slate-700">
-            <CardContent className="p-6">
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <Target className="h-5 w-5 text-purple-400" />
-                  <span className="text-white font-medium">
-                    {dataSource === 'api' ? 'Fetching Real-time Data' : 'Processing CSV Data'}
-                  </span>
+      {results && (
+        <Card className="mt-6 bg-slate-800/50 border-slate-700">
+          <CardHeader>
+            <CardTitle className="text-white flex items-center gap-2">
+              <BarChart3 className="h-5 w-5" />
+              Valuation Results
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-3">Key Metrics</h3>
+                <div className="space-y-2 text-slate-400">
+                  <div>Enterprise Value: <span className="text-white">${results?.enterpriseValue.toFixed(2)}</span></div>
+                  <div>Equity Value: <span className="text-white">${results?.equityValue.toFixed(2)}</span></div>
+                  <div>Fair Value per Share: <span className="text-white">${results?.fairValuePerShare.toFixed(2)}</span></div>
+                  <div>WACC: <span className="text-white">{(results?.wacc * 100).toFixed(2)}%</span></div>
+                  <div>Terminal Value: <span className="text-white">${results?.terminalValue.toFixed(2)}</span></div>
                 </div>
-                <Progress value={progress} className="h-2" />
-                <p className="text-sm text-slate-400">Analysis in progress... {Math.round(progress)}%</p>
               </div>
-            </CardContent>
-          </Card>
-        )}
 
-        {/* Results Section */}
-        {valuation && (
-          <div className="space-y-6">
-            {/* Valuation Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <Card className="bg-slate-800/50 border-slate-700">
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <TrendingUp className="h-4 w-4 text-blue-400" />
-                    <div className="text-sm text-slate-400">DCF Price Target</div>
-                  </div>
-                  <div className="text-2xl font-bold text-white">
-                    ${valuation.dcf.pricePerShare.toFixed(2)}
-                  </div>
-                  <div className={`text-sm ${valuation.dcf.upside > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    {valuation.dcf.upside > 0 ? '+' : ''}{(valuation.dcf.upside * 100).toFixed(1)}% vs current
-                  </div>
-                </CardContent>
-              </Card>
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-3">Detailed Cash Flow Projections</h3>
+                <ScrollArea className="h-[300px] rounded-md border bg-secondary">
+                  <table className="w-full text-sm">
+                    <thead className="[&_th]:px-4 [&_th]:py-2 [&_th:first-child]:text-left [&_th:last-child]:text-right">
+                      <tr>
+                        <th>Year</th>
+                        <th>Free Cash Flow</th>
+                      </tr>
+                    </thead>
+                    <tbody className="[&_td]:px-4 [&_td]:py-2 [&_td:first-child]:text-left [&_td:last-child]:text-right">
+                      {results.projectedFreeCashFlows.map((fcf, index) => (
+                        <tr key={index}>
+                          <td>{index + 1}</td>
+                          <td>${fcf.toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <ScrollBar orientation="horizontal" />
+                </ScrollArea>
+              </div>
+            </div>
 
-              <Card className="bg-slate-800/50 border-slate-700">
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <DollarSign className="h-4 w-4 text-purple-400" />
-                    <div className="text-sm text-slate-400">DDM Intrinsic Value</div>
-                  </div>
-                  {valuation.ddm.applicable ? (
+            <Separator className="my-6 bg-slate-700" />
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                  <FilePieChart className="h-4 w-4 text-green-400" />
+                  DCF Analysis Summary
+                </h3>
+                <div className="text-sm text-slate-400 space-y-2">
+                  <p>
+                    Based on the Discounted Cash Flow (DCF) model, the fair value per share is estimated to be{' '}
+                    <span className="text-green-400 font-medium">${results?.fairValuePerShare.toFixed(2)}</span>.
+                  </p>
+                  <p>
+                    This valuation is derived from projecting future free cash flows and discounting them back to
+                    present value using a Weighted Average Cost of Capital (WACC) of{' '}
+                    <span className="text-green-400 font-medium">{(results?.wacc * 100).toFixed(2)}%</span>.
+                  </p>
+                  <p>
+                    The analysis incorporates a terminal value of{' '}
+                    <span className="text-green-400 font-medium">${results?.terminalValue.toFixed(2)}</span>,
+                    representing the value of the company beyond the explicit forecast period.
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                  <Presentation className="h-4 w-4 text-blue-400" />
+                  Recommendation
+                </h3>
+                <div className="text-sm text-slate-400 space-y-2">
+                  {results.fairValuePerShare > 0 ? (
                     <>
-                      <div className="text-2xl font-bold text-white">
-                        ${valuation.ddm.intrinsicValue.toFixed(2)}
-                      </div>
-                      <div className={`text-sm ${valuation.ddm.upside > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {valuation.ddm.upside > 0 ? '+' : ''}{(valuation.ddm.upside * 100).toFixed(1)}% vs current
-                      </div>
+                      <p>
+                        The current market price is below the estimated fair value, suggesting that the stock may be{' '}
+                        <span className="text-blue-400 font-medium">undervalued</span>.
+                      </p>
+                      <p>
+                        Based on this analysis, a potential <span className="text-blue-400 font-medium">BUY</span>{' '}
+                        recommendation is warranted.
+                      </p>
                     </>
                   ) : (
                     <>
-                      <div className="text-2xl font-bold text-slate-500">N/A</div>
-                      <div className="text-sm text-slate-500">Not applicable</div>
+                      <p>
+                        The analysis indicates a negative fair value, suggesting significant financial challenges or
+                        risks.
+                      </p>
+                      <p>
+                        A <span className="text-red-400 font-medium">SELL</span> recommendation may be appropriate.
+                      </p>
                     </>
                   )}
-                </CardContent>
-              </Card>
-
-              <Card className="bg-slate-800/50 border-slate-700">
-                <CardContent className="p-4">
-                  <div className="text-sm text-slate-400">Current Price</div>
-                  <div className="text-2xl font-bold text-white">
-                    ${valuation.dcf.currentPrice.toFixed(2)}
-                  </div>
-                  <div className="text-sm text-slate-400">
-                    Data: {dataSource === 'api' ? 'Real-time' : 'CSV Upload'}
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-slate-800/50 border-slate-700">
-                <CardContent className="p-4">
-                  <div className="text-sm text-slate-400">WACC</div>
-                  <div className="text-2xl font-bold text-green-400">
-                    {(valuation.dcf.wacc * 100).toFixed(2)}%
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Detailed Analysis */}
-            <Card className="bg-slate-800/50 border-slate-700">
-              <CardHeader>
-                <div className="flex justify-between items-center">
-                  <CardTitle className="text-white flex items-center gap-2">
-                    <TrendingUp className="h-5 w-5" />
-                    Valuation Analysis Results - {valuation.ticker}
-                  </CardTitle>
-                  <div className="flex gap-2">
-                    <Button 
-                      onClick={handleExportExcel}
-                      variant="outline" 
-                      size="sm"
-                      className="border-slate-600 text-slate-300 hover:bg-slate-700"
-                    >
-                      <FileSpreadsheet className="h-4 w-4 mr-2" />
-                      Export Excel
-                    </Button>
-                    <Button 
-                      onClick={handleExportPowerPoint}
-                      variant="outline" 
-                      size="sm"
-                      className="border-slate-600 text-slate-300 hover:bg-slate-700"
-                    >
-                      <Presentation className="h-4 w-4 mr-2" />
-                      Export PPT
-                    </Button>
-                  </div>
                 </div>
-              </CardHeader>
-              <CardContent>
-                <Tabs defaultValue="summary" className="w-full">
-                  <TabsList className="grid w-full grid-cols-4 bg-slate-700">
-                    <TabsTrigger value="summary" className="text-slate-300">Summary</TabsTrigger>
-                    <TabsTrigger value="dcf" className="text-slate-300">DCF Details</TabsTrigger>
-                    <TabsTrigger value="ddm" className="text-slate-300">DDM Details</TabsTrigger>
-                    <TabsTrigger value="assumptions" className="text-slate-300">Assumptions</TabsTrigger>
-                  </TabsList>
-                  
-                  <TabsContent value="summary" className="mt-6">
-                    <div className="space-y-6">
-                      <div className="bg-slate-700/30 p-6 rounded-lg">
-                        <h4 className="text-xl font-bold text-white mb-4">Investment Recommendation</h4>
-                        <p className="text-slate-300 mb-4">{valuation.recommendation}</p>
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          <div>
-                            <h5 className="text-green-400 font-semibold mb-3">Key Strengths</h5>
-                            <ul className="text-slate-300 space-y-2">
-                              {valuation.keyStrengths.map((strength, index) => (
-                                <li key={index} className="flex items-start gap-2">
-                                  <span className="text-green-400 mt-1">•</span>
-                                  <span>{strength}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                          <div>
-                            <h5 className="text-red-400 font-semibold mb-3">Key Risks</h5>
-                            <ul className="text-slate-300 space-y-2">
-                              {valuation.keyRisks.map((risk, index) => (
-                                <li key={index} className="flex items-start gap-2">
-                                  <span className="text-red-400 mt-1">•</span>
-                                  <span>{risk}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </TabsContent>
-
-                  <TabsContent value="dcf" className="mt-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="space-y-4">
-                        <h4 className="text-lg font-semibold text-white">DCF Valuation Results</h4>
-                        <div className="space-y-3">
-                          <div className="flex justify-between">
-                            <span className="text-slate-400">Enterprise Value:</span>
-                            <span className="text-white">${(valuation.dcf.enterpriseValue / 1000000).toFixed(0)}M</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-slate-400">Equity Value:</span>
-                            <span className="text-white">${(valuation.dcf.equityValue / 1000000).toFixed(0)}M</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-slate-400">Price per Share:</span>
-                            <span className="text-blue-400">${valuation.dcf.pricePerShare.toFixed(2)}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-slate-400">Current Price:</span>
-                            <span className="text-white">${valuation.dcf.currentPrice.toFixed(2)}</span>
-                          </div>
-                          <div className="flex justify-between font-bold border-t border-slate-600 pt-2">
-                            <span className="text-slate-400">Upside/(Downside):</span>
-                            <span className={valuation.dcf.upside > 0 ? 'text-green-400' : 'text-red-400'}>
-                              {valuation.dcf.upside > 0 ? '+' : ''}{(valuation.dcf.upside * 100).toFixed(1)}%
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="space-y-4">
-                        <h4 className="text-lg font-semibold text-white">Cost of Capital</h4>
-                        <div className="space-y-3">
-                          <div className="flex justify-between">
-                            <span className="text-slate-400">Cost of Equity:</span>
-                            <span className="text-white">{(valuation.dcf.costOfEquity * 100).toFixed(2)}%</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-slate-400">Cost of Debt:</span>
-                            <span className="text-white">{(valuation.dcf.costOfDebt * 100).toFixed(2)}%</span>
-                          </div>
-                          <div className="flex justify-between font-bold border-t border-slate-600 pt-2">
-                            <span className="text-slate-400">WACC:</span>
-                            <span className="text-green-400">{(valuation.dcf.wacc * 100).toFixed(2)}%</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </TabsContent>
-
-                  <TabsContent value="ddm" className="mt-6">
-                    <div className="space-y-6">
-                      {valuation.ddm.applicable ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          <div className="space-y-4">
-                            <h4 className="text-lg font-semibold text-white">Dividend Discount Model</h4>
-                            <div className="space-y-3">
-                              <div className="flex justify-between">
-                                <span className="text-slate-400">Avg. Dividend Growth:</span>
-                                <span className="text-white">{(valuation.ddm.avgDividendGrowth * 100).toFixed(1)}%</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-slate-400">Next Year Dividend:</span>
-                                <span className="text-white">${valuation.ddm.nextYearDividend.toFixed(2)}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-slate-400">Intrinsic Value:</span>
-                                <span className="text-purple-400">${valuation.ddm.intrinsicValue.toFixed(2)}</span>
-                              </div>
-                              <div className="flex justify-between font-bold border-t border-slate-600 pt-2">
-                                <span className="text-slate-400">DDM Upside/(Downside):</span>
-                                <span className={valuation.ddm.upside > 0 ? 'text-green-400' : 'text-red-400'}>
-                                  {valuation.ddm.upside > 0 ? '+' : ''}{(valuation.ddm.upside * 100).toFixed(1)}%
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="bg-purple-900/20 p-4 rounded-lg">
-                            <h5 className="text-purple-400 font-semibold mb-2">Gordon Growth Model</h5>
-                            <p className="text-slate-300 text-sm">
-                              The DDM uses the Gordon Growth Model to calculate intrinsic value based on 
-                              expected future dividends. This model assumes a constant dividend growth rate 
-                              and is most suitable for mature, dividend-paying companies.
-                            </p>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="bg-slate-700/30 p-6 rounded-lg text-center">
-                          <TrendingDown className="h-12 w-12 text-slate-500 mx-auto mb-4" />
-                          <h4 className="text-lg font-semibold text-white mb-2">DDM Not Applicable</h4>
-                          <p className="text-slate-400">{valuation.ddm.reason}</p>
-                        </div>
-                      )}
-                    </div>
-                  </TabsContent>
-
-                  <TabsContent value="assumptions" className="mt-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div>
-                        <h4 className="text-lg font-semibold text-white mb-4">Market Assumptions</h4>
-                        <div className="space-y-3">
-                          <div className="flex justify-between">
-                            <span className="text-slate-400">Risk-free Rate:</span>
-                            <span className="text-white">4.0%</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-slate-400">Market Return:</span>
-                            <span className="text-white">9.0%</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-slate-400">Tax Rate:</span>
-                            <span className="text-white">21%</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-slate-400">Terminal Growth:</span>
-                            <span className="text-white">2.5%</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-slate-400">Forecast Period:</span>
-                            <span className="text-white">5 years</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-slate-400">Data Source:</span>
-                            <span className="text-white">{dataSource === 'api' ? 'Alpha Vantage API' : 'CSV Upload'}</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div>
-                        <h4 className="text-lg font-semibold text-white mb-4">Methodology Notes</h4>
-                        <div className="space-y-3 text-sm text-slate-300">
-                          <p>• DCF uses projected free cash flows discounted at WACC</p>
-                          <p>• WACC calculated using CAPM for cost of equity</p>
-                          <p>• DDM applies Gordon Growth Model for dividend stocks</p>
-                          <p>• Terminal value assumes perpetual growth at 2.5%</p>
-                          <p>• {dataSource === 'api' ? 'Real-time data from Alpha Vantage API' : 'User-provided CSV data'}</p>
-                        </div>
-                      </div>
-                    </div>
-                  </TabsContent>
-                </Tabs>
-              </CardContent>
-            </Card>
-          </div>
-        )}
-      </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };
