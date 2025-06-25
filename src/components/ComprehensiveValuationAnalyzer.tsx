@@ -1,6 +1,8 @@
+
 import React, { useState, useEffect } from 'react';
 import DataSourceSelector, { MarketAssumptions } from '@/components/DataSourceSelector';
 import DCFCalculator, { DCFResults } from '@/components/DCFCalculator';
+import { AlphaVantageService } from '@/services/alphaVantageService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from "@/components/ui/skeleton"
 import { Separator } from "@/components/ui/separator"
@@ -27,58 +29,47 @@ const ComprehensiveValuationAnalyzer: React.FC<ComprehensiveValuationAnalyzerPro
     setDataSource(source);
     setData(data);
     setAssumptions(assumptions);
-    setResults(null); // Clear previous results
+    setResults(null);
     setError(null);
     setIsLoading(true);
 
     try {
-      // Simulate API call or data processing delay
       await new Promise(resolve => setTimeout(resolve, 500));
 
       if (source === 'api') {
-        // Fetch data from Alpha Vantage API
         const ticker = (data as { ticker: string }).ticker;
+        console.log(`Fetching data for ticker: ${ticker}`);
         
-        // Fetch Overview
-        const overviewResponse = await fetch(`/api/alpha-vantage?ticker=${ticker}&dataType=overview`);
-        const overviewData = await overviewResponse.json();
-        if (!overviewResponse.ok) {
-          throw new Error(overviewData.error || 'Failed to fetch company overview');
-        }
-
-        // Fetch Income Statement
-        const incomeStatementResponse = await fetch(`/api/alpha-vantage?ticker=${ticker}&dataType=income_statement`);
-        const incomeStatementData = await incomeStatementResponse.json();
-        if (!incomeStatementResponse.ok) {
-          throw new Error(incomeStatementData.error || 'Failed to fetch income statement');
-        }
-
-        // Fetch Balance Sheet
-        const balanceSheetResponse = await fetch(`/api/alpha-vantage?ticker=${ticker}&dataType=balance_sheet`);
-        const balanceSheetData = await balanceSheetResponse.json();
-        if (!balanceSheetResponse.ok) {
-          throw new Error(balanceSheetData.error || 'Failed to fetch balance sheet');
-        }
-
-        // Fetch Cash Flow Statement
-        const cashFlowResponse = await fetch(`/api/alpha-vantage?ticker=${ticker}&dataType=cash_flow`);
-        const cashFlowData = await cashFlowResponse.json();
-        if (!cashFlowResponse.ok) {
-          throw new Error(cashFlowData.error || 'Failed to fetch cash flow statement');
-        }
-
-        const apiData = {
-          overview: overviewData.data,
-          incomeStatement: incomeStatementData.data,
-          balanceSheet: balanceSheetData.data,
-          cashFlow: cashFlowData.data,
-        };
+        // Use the AlphaVantageService instead of direct API calls
+        const processedData = await AlphaVantageService.getProcessedFinancialData(ticker);
         
-        setData(apiData);
+        setData(processedData);
 
-        // Prepare data for DCF calculation
-        const revenueGrowthRates = Array(assumptions.forecastYears).fill(0.05); // Example: 5% growth for all forecast years
-        const operatingMargins = Array(assumptions.forecastYears).fill(0.15); // Example: 15% operating margin for all forecast years
+        // Calculate revenue growth rates from historical data
+        const revenueGrowthRates = [];
+        for (let i = 1; i < Math.min(processedData.revenue.length, assumptions.forecastYears); i++) {
+          const growth = (processedData.revenue[i-1] - processedData.revenue[i]) / processedData.revenue[i];
+          revenueGrowthRates.push(Math.max(growth, 0.02)); // Minimum 2% growth
+        }
+        
+        // Fill remaining years with average growth
+        const avgGrowth = revenueGrowthRates.reduce((sum, rate) => sum + rate, 0) / revenueGrowthRates.length || 0.05;
+        while (revenueGrowthRates.length < assumptions.forecastYears) {
+          revenueGrowthRates.push(avgGrowth);
+        }
+
+        // Calculate operating margins from historical data
+        const operatingMargins = [];
+        for (let i = 0; i < Math.min(processedData.operatingIncome.length, assumptions.forecastYears); i++) {
+          const margin = processedData.operatingIncome[i] / processedData.revenue[i];
+          operatingMargins.push(Math.max(margin, 0.05)); // Minimum 5% margin
+        }
+        
+        // Fill remaining years with average margin
+        const avgMargin = operatingMargins.reduce((sum, margin) => sum + margin, 0) / operatingMargins.length || 0.15;
+        while (operatingMargins.length < assumptions.forecastYears) {
+          operatingMargins.push(avgMargin);
+        }
         
         const dcfData = {
           revenueGrowthRates,
@@ -91,18 +82,15 @@ const ComprehensiveValuationAnalyzer: React.FC<ComprehensiveValuationAnalyzerPro
         };
 
         setResults(DCFCalculator(dcfData));
-        toast.success('Data fetched and valuation complete!');
+        toast.success('Real-time data fetched and valuation complete!');
 
       } else if (source === 'csv') {
-        // Process CSV data
-        // Example: Validate CSV data structure
         if (!data['Revenue'] || !data['Net Income']) {
           throw new Error('CSV data must contain Revenue and Net Income columns');
         }
         
-        // Simulate DCF calculation with CSV data
-        const revenueGrowthRates = Array(assumptions.forecastYears).fill(0.05); // Example: 5% growth for all forecast years
-        const operatingMargins = Array(assumptions.forecastYears).fill(0.15); // Example: 15% operating margin for all forecast years
+        const revenueGrowthRates = Array(assumptions.forecastYears).fill(0.05);
+        const operatingMargins = Array(assumptions.forecastYears).fill(0.15);
         
         const dcfData = {
           revenueGrowthRates,
@@ -118,6 +106,7 @@ const ComprehensiveValuationAnalyzer: React.FC<ComprehensiveValuationAnalyzerPro
         toast.success('CSV data processed and valuation complete!');
       }
     } catch (e: any) {
+      console.error('Error in data processing:', e);
       setError(e.message || 'Failed to fetch or process data');
       toast.error(e.message || 'Failed to fetch or process data');
     } finally {
