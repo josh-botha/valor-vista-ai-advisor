@@ -26,14 +26,16 @@ const ComprehensiveValuationAnalyzer: React.FC<ComprehensiveValuationAnalyzerPro
   const [error, setError] = useState<string | null>(null);
 
   const handleDataSourceSelected = async (source: 'api' | 'csv', data: any, assumptions: MarketAssumptions) => {
-    setDataSource(source);
-    setData(data);
-    setAssumptions(assumptions);
-    setResults(null);
-    setError(null);
-    setIsLoading(true);
-
+    console.log('Data source selected:', source, data, assumptions);
+    
     try {
+      setDataSource(source);
+      setData(data);
+      setAssumptions(assumptions);
+      setResults(null);
+      setError(null);
+      setIsLoading(true);
+
       await new Promise(resolve => setTimeout(resolve, 500));
 
       if (source === 'api') {
@@ -85,8 +87,8 @@ const ComprehensiveValuationAnalyzer: React.FC<ComprehensiveValuationAnalyzerPro
         toast.success('Real-time data fetched and valuation complete!');
 
       } else if (source === 'csv') {
-        if (!data['Revenue'] || !data['Net Income']) {
-          throw new Error('CSV data must contain Revenue and Net Income columns');
+        if (!data['Revenue'] && !data['revenue']) {
+          throw new Error('CSV data must contain Revenue column');
         }
         
         const revenueGrowthRates = Array(assumptions.forecastYears).fill(0.05);
@@ -107,8 +109,9 @@ const ComprehensiveValuationAnalyzer: React.FC<ComprehensiveValuationAnalyzerPro
       }
     } catch (e: any) {
       console.error('Error in data processing:', e);
-      setError(e.message || 'Failed to fetch or process data');
-      toast.error(e.message || 'Failed to fetch or process data');
+      const errorMessage = e.message || 'Failed to fetch or process data';
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -116,7 +119,8 @@ const ComprehensiveValuationAnalyzer: React.FC<ComprehensiveValuationAnalyzerPro
 
   // Auto-trigger analysis if initial ticker is provided
   useEffect(() => {
-    if (initialTicker && !isLoading && !results) {
+    if (initialTicker && !isLoading && !results && !error) {
+      console.log('Auto-triggering analysis for ticker:', initialTicker);
       const defaultAssumptions = {
         riskFreeRate: 0.04,
         marketReturn: 0.09,
@@ -127,7 +131,7 @@ const ComprehensiveValuationAnalyzer: React.FC<ComprehensiveValuationAnalyzerPro
       
       handleDataSourceSelected('api', { ticker: initialTicker }, defaultAssumptions);
     }
-  }, [initialTicker, isLoading, results]);
+  }, [initialTicker, isLoading, results, error]);
 
   return (
     <div className="container mx-auto py-8">
