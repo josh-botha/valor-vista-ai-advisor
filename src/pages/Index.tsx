@@ -5,7 +5,7 @@ import ProtectedRoute from '@/components/ProtectedRoute';
 import Header from '@/components/Header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { CheckCircle, TrendingUp, Brain, Target } from 'lucide-react';
+import { CheckCircle, TrendingUp, Brain, Target, BarChart3 } from 'lucide-react';
 
 const Index = () => {
   const [ticker, setTicker] = useState('');
@@ -72,6 +72,25 @@ const Index = () => {
                   consensus-driven, investor-grade equity reports based on real-time market data, valuation 
                   models, and risk insights.
                 </p>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="mb-8 flex flex-col sm:flex-row gap-4 justify-center">
+                <Button
+                  onClick={() => navigate('/stock-analyzer')}
+                  className="bg-green-600 hover:bg-green-700 text-white font-medium text-lg px-8 py-3"
+                >
+                  <BarChart3 className="w-5 h-5 mr-2" />
+                  Live Stock Analyzer
+                </Button>
+                <Button
+                  onClick={() => navigate('/valuation')}
+                  variant="outline"
+                  className="border-blue-400 text-blue-400 hover:bg-blue-400 hover:text-white font-medium text-lg px-8 py-3"
+                >
+                  <Target className="w-5 h-5 mr-2" />
+                  Valuation Tools
+                </Button>
               </div>
 
               {/* Process Steps */}
