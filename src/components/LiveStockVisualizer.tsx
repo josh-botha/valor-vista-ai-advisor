@@ -41,7 +41,7 @@ const LiveStockVisualizer = () => {
   const [autoRefresh, setAutoRefresh] = useState(false);
   const { toast } = useToast();
 
-  // Mock function to simulate real-time stock data
+  // Generate realistic mock stock data
   const generateMockStockData = (symbol: string): StockData => {
     const basePrice = Math.random() * 300 + 50;
     const change = (Math.random() - 0.5) * 10;
