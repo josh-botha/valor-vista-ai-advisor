@@ -3,12 +3,14 @@ import React, { useState, useEffect } from 'react';
 import DataSourceSelector, { MarketAssumptions } from '@/components/DataSourceSelector';
 import { calculateDCF, DCFResults } from '@/utils/dcfCalculator';
 import { AlphaVantageService } from '@/services/alphaVantageService';
+import { ExcelExporter, DCFExportData } from '@/utils/excelExporter';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from "@/components/ui/skeleton"
 import { Separator } from "@/components/ui/separator"
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
-import { Sparkles, BarChart3, FilePieChart, Presentation, AlertTriangle } from 'lucide-react';
+import { Sparkles, BarChart3, FilePieChart, Presentation, AlertTriangle, Download } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface ComprehensiveValuationAnalyzerProps {
@@ -23,7 +25,9 @@ const ComprehensiveValuationAnalyzer: React.FC<ComprehensiveValuationAnalyzerPro
   const [assumptions, setAssumptions] = useState<MarketAssumptions | null>(null);
   const [results, setResults] = useState<DCFResults | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [ticker, setTicker] = useState<string>(initialTicker);
 
   const handleDataSourceSelected = async (source: 'api' | 'csv', data: any, assumptions: MarketAssumptions) => {
     console.log('Data source selected:', source, data, assumptions);
@@ -39,11 +43,12 @@ const ComprehensiveValuationAnalyzer: React.FC<ComprehensiveValuationAnalyzerPro
       await new Promise(resolve => setTimeout(resolve, 500));
 
       if (source === 'api') {
-        const ticker = (data as { ticker: string }).ticker;
-        console.log(`Fetching data for ticker: ${ticker}`);
+        const tickerSymbol = (data as { ticker: string }).ticker;
+        setTicker(tickerSymbol);
+        console.log(`Fetching data for ticker: ${tickerSymbol}`);
         
         // Use the AlphaVantageService instead of direct API calls
-        const processedData = await AlphaVantageService.getProcessedFinancialData(ticker);
+        const processedData = await AlphaVantageService.getProcessedFinancialData(tickerSymbol);
         
         setData(processedData);
 
@@ -117,6 +122,72 @@ const ComprehensiveValuationAnalyzer: React.FC<ComprehensiveValuationAnalyzerPro
     }
   };
 
+  const handleExcelExport = async () => {
+    if (!results || !assumptions || !data) {
+      toast.error('No data available for export');
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      const exportData: DCFExportData = {
+        ticker: ticker || 'UNKNOWN',
+        assumptions: {
+          wacc: results.wacc,
+          terminalGrowth: assumptions.terminalGrowthRate,
+          taxRate: assumptions.taxRate,
+          forecastYears: assumptions.forecastYears
+        },
+        financials: {
+          revenue: data.revenue?.[0] || 1000,
+          freeCashFlow: results.projectedFreeCashFlows[0] || 0,
+          marketCap: data.marketCap || 0,
+          totalDebt: data.totalDebt || 0
+        },
+        scenarios: [
+          {
+            name: 'Base Case',
+            growthRate: 0.05,
+            projectedFCFs: results.projectedFreeCashFlows,
+            terminalValue: results.terminalValue,
+            enterpriseValue: results.enterpriseValue,
+            equityValue: results.equityValue,
+            priceTarget: results.fairValuePerShare
+          },
+          {
+            name: 'Bull Case',
+            growthRate: 0.08,
+            projectedFCFs: results.projectedFreeCashFlows.map(fcf => fcf * 1.2),
+            terminalValue: results.terminalValue * 1.3,
+            enterpriseValue: results.enterpriseValue * 1.25,
+            equityValue: results.equityValue * 1.25,
+            priceTarget: results.fairValuePerShare * 1.25
+          },
+          {
+            name: 'Bear Case',
+            growthRate: 0.02,
+            projectedFCFs: results.projectedFreeCashFlows.map(fcf => fcf * 0.8),
+            terminalValue: results.terminalValue * 0.7,
+            enterpriseValue: results.enterpriseValue * 0.75,
+            equityValue: results.equityValue * 0.75,
+            priceTarget: results.fairValuePerShare * 0.75
+          }
+        ]
+      };
+
+      const blob = await ExcelExporter.generateDCFModel(exportData);
+      const filename = `DCF_Analysis_${ticker}_${new Date().toISOString().split('T')[0]}.csv`;
+      ExcelExporter.downloadFile(blob, filename);
+      
+      toast.success('Excel file downloaded successfully!');
+    } catch (error) {
+      console.error('Export error:', error);
+      toast.error('Failed to export Excel file');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   // Auto-trigger analysis if initial ticker is provided
   useEffect(() => {
     if (initialTicker && !isLoading && !results && !error) {
@@ -135,7 +206,23 @@ const ComprehensiveValuationAnalyzer: React.FC<ComprehensiveValuationAnalyzerPro
 
   return (
     <div className="container mx-auto py-8">
-      <h1 className="text-2xl font-bold mb-4">Comprehensive Valuation Analyzer</h1>
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="text-2xl font-bold">Comprehensive Valuation Analyzer</h1>
+        {results && (
+          <Button 
+            onClick={handleExcelExport}
+            disabled={isExporting}
+            className="flex items-center gap-2"
+          >
+            {isExporting ? (
+              <Sparkles className="h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4" />
+            )}
+            Export DCF Model
+          </Button>
+        )}
+      </div>
       
       <DataSourceSelector onDataSourceSelected={handleDataSourceSelected} isLoading={isLoading} />
 
