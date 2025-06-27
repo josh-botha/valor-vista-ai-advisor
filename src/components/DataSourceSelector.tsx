@@ -1,11 +1,10 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Upload, Globe, FileText, Settings } from 'lucide-react';
+import { Upload, Globe, FileText, Settings, TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
 
 export interface MarketAssumptions {
@@ -17,7 +16,7 @@ export interface MarketAssumptions {
 }
 
 export interface DataSourceSelectorProps {
-  onDataSourceSelected: (source: 'api' | 'csv', data: any, assumptions: MarketAssumptions) => void;
+  onDataSourceSelected: (source: 'api' | 'csv' | 'fmp', data: any, assumptions: MarketAssumptions) => void;
   isLoading: boolean;
 }
 
@@ -38,6 +37,14 @@ const DataSourceSelector: React.FC<DataSourceSelectorProps> = ({ onDataSourceSel
       return;
     }
     onDataSourceSelected('api', { ticker: ticker.toUpperCase() }, assumptions);
+  };
+
+  const handleFMPDataFetch = () => {
+    if (!ticker.trim()) {
+      toast.error('Please enter a valid ticker symbol');
+      return;
+    }
+    onDataSourceSelected('fmp', { ticker: ticker.toUpperCase() }, assumptions);
   };
 
   const handleCsvUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -110,13 +117,41 @@ const DataSourceSelector: React.FC<DataSourceSelectorProps> = ({ onDataSourceSel
           </TabsList>
 
           <TabsContent value="data-source" className="mt-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Real-time API Data */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Financial Modeling Prep */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <TrendingUp className="h-4 w-4 text-purple-400" />
+                  <h4 className="text-lg font-semibold text-white">FMP Data</h4>
+                  <Badge variant="secondary" className="bg-purple-800 text-purple-100">Premium</Badge>
+                </div>
+                <div className="space-y-3">
+                  <Input
+                    placeholder="Enter ticker symbol (e.g., AAPL)"
+                    value={ticker}
+                    onChange={(e) => setTicker(e.target.value.toUpperCase())}
+                    className="bg-slate-700 border-slate-600 text-white placeholder-slate-400"
+                    disabled={isLoading}
+                  />
+                  <Button 
+                    onClick={handleFMPDataFetch}
+                    disabled={isLoading || !ticker.trim()}
+                    className="w-full bg-purple-600 hover:bg-purple-700"
+                  >
+                    {isLoading ? 'Fetching Data...' : 'Fetch FMP Data'}
+                  </Button>
+                  <p className="text-sm text-slate-400">
+                    High-quality financial data from Financial Modeling Prep including detailed financials, ratios, and market data.
+                  </p>
+                </div>
+              </div>
+
+              {/* Alpha Vantage API Data */}
               <div className="space-y-4">
                 <div className="flex items-center gap-2 mb-3">
                   <Globe className="h-4 w-4 text-green-400" />
-                  <h4 className="text-lg font-semibold text-white">Real-time Data</h4>
-                  <Badge variant="secondary" className="bg-green-800 text-green-100">Alpha Vantage</Badge>
+                  <h4 className="text-lg font-semibold text-white">Alpha Vantage</h4>
+                  <Badge variant="secondary" className="bg-green-800 text-green-100">Free</Badge>
                 </div>
                 <div className="space-y-3">
                   <Input
@@ -131,10 +166,10 @@ const DataSourceSelector: React.FC<DataSourceSelectorProps> = ({ onDataSourceSel
                     disabled={isLoading || !ticker.trim()}
                     className="w-full bg-green-600 hover:bg-green-700"
                   >
-                    {isLoading ? 'Fetching Data...' : 'Fetch Real-time Data'}
+                    {isLoading ? 'Fetching Data...' : 'Fetch Alpha Vantage'}
                   </Button>
                   <p className="text-sm text-slate-400">
-                    Fetches live financial data including income statements, cash flows, and market data.
+                    Free financial data including basic income statements, cash flows, and market data.
                   </p>
                 </div>
               </div>
@@ -143,7 +178,7 @@ const DataSourceSelector: React.FC<DataSourceSelectorProps> = ({ onDataSourceSel
               <div className="space-y-4">
                 <div className="flex items-center gap-2 mb-3">
                   <Upload className="h-4 w-4 text-blue-400" />
-                  <h4 className="text-lg font-semibold text-white">Upload CSV Data</h4>
+                  <h4 className="text-lg font-semibold text-white">Upload CSV</h4>
                   <Badge variant="secondary" className="bg-blue-800 text-blue-100">Manual</Badge>
                 </div>
                 <div className="space-y-3">

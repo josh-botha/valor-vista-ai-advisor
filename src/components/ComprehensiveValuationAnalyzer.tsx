@@ -1,8 +1,8 @@
-
 import React, { useState, useEffect } from 'react';
 import DataSourceSelector, { MarketAssumptions } from '@/components/DataSourceSelector';
 import { calculateDCF, DCFResults } from '@/utils/dcfCalculator';
 import { AlphaVantageService } from '@/services/alphaVantageService';
+import { FMPService } from '@/services/fmpService';
 import { ExcelExporter, DCFExportData } from '@/utils/excelExporter';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -20,7 +20,7 @@ interface ComprehensiveValuationAnalyzerProps {
 const ComprehensiveValuationAnalyzer: React.FC<ComprehensiveValuationAnalyzerProps> = ({ 
   initialTicker = '' 
 }) => {
-  const [dataSource, setDataSource] = useState<'api' | 'csv' | null>(null);
+  const [dataSource, setDataSource] = useState<'api' | 'csv' | 'fmp' | null>(null);
   const [data, setData] = useState<any>(null);
   const [assumptions, setAssumptions] = useState<MarketAssumptions | null>(null);
   const [results, setResults] = useState<DCFResults | null>(null);
@@ -29,7 +29,7 @@ const ComprehensiveValuationAnalyzer: React.FC<ComprehensiveValuationAnalyzerPro
   const [error, setError] = useState<string | null>(null);
   const [ticker, setTicker] = useState<string>(initialTicker);
 
-  const handleDataSourceSelected = async (source: 'api' | 'csv', data: any, assumptions: MarketAssumptions) => {
+  const handleDataSourceSelected = async (source: 'api' | 'csv' | 'fmp', data: any, assumptions: MarketAssumptions) => {
     console.log('Data source selected:', source, data, assumptions);
     
     try {
@@ -42,7 +42,56 @@ const ComprehensiveValuationAnalyzer: React.FC<ComprehensiveValuationAnalyzerPro
 
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      if (source === 'api') {
+      if (source === 'fmp') {
+        const tickerSymbol = (data as { ticker: string }).ticker;
+        setTicker(tickerSymbol);
+        console.log(`Fetching FMP data for ticker: ${tickerSymbol}`);
+        
+        // Use the FMPService to fetch data
+        const processedData = await FMPService.getProcessedFinancialData(tickerSymbol);
+        
+        setData(processedData);
+
+        // Calculate revenue growth rates from historical data
+        const revenueGrowthRates = [];
+        for (let i = 1; i < Math.min(processedData.revenue.length, assumptions.forecastYears); i++) {
+          const growth = (processedData.revenue[i-1] - processedData.revenue[i]) / processedData.revenue[i];
+          revenueGrowthRates.push(Math.max(growth, 0.02)); // Minimum 2% growth
+        }
+        
+        // Fill remaining years with average growth
+        const avgGrowth = revenueGrowthRates.reduce((sum, rate) => sum + rate, 0) / revenueGrowthRates.length || 0.05;
+        while (revenueGrowthRates.length < assumptions.forecastYears) {
+          revenueGrowthRates.push(avgGrowth);
+        }
+
+        // Calculate operating margins from historical data
+        const operatingMargins = [];
+        for (let i = 0; i < Math.min(processedData.operatingIncome.length, assumptions.forecastYears); i++) {
+          const margin = processedData.operatingIncome[i] / processedData.revenue[i];
+          operatingMargins.push(Math.max(margin, 0.05)); // Minimum 5% margin
+        }
+        
+        // Fill remaining years with average margin
+        const avgMargin = operatingMargins.reduce((sum, margin) => sum + margin, 0) / operatingMargins.length || 0.15;
+        while (operatingMargins.length < assumptions.forecastYears) {
+          operatingMargins.push(avgMargin);
+        }
+        
+        const dcfData = {
+          revenueGrowthRates,
+          operatingMargins,
+          riskFreeRate: assumptions.riskFreeRate,
+          marketReturn: assumptions.marketReturn,
+          taxRate: assumptions.taxRate,
+          terminalGrowthRate: assumptions.terminalGrowthRate,
+          forecastYears: assumptions.forecastYears
+        };
+
+        setResults(calculateDCF(dcfData));
+        toast.success('FMP data fetched and valuation complete!');
+
+      } else if (source === 'api') {
         const tickerSymbol = (data as { ticker: string }).ticker;
         setTicker(tickerSymbol);
         console.log(`Fetching data for ticker: ${tickerSymbol}`);
@@ -200,7 +249,7 @@ const ComprehensiveValuationAnalyzer: React.FC<ComprehensiveValuationAnalyzerPro
         forecastYears: 5
       };
       
-      handleDataSourceSelected('api', { ticker: initialTicker }, defaultAssumptions);
+      handleDataSourceSelected('fmp', { ticker: initialTicker }, defaultAssumptions);
     }
   }, [initialTicker, isLoading, results, error]);
 
